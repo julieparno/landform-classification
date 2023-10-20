@@ -288,14 +288,14 @@ def plot_landforms(featrs, nullval):
 
 def fit_local_quad(img, dx, dy, window):
     """
-    Estimates local quadratic approximations of a DEM img.  Consider a WxW window of the image
+    Estimates local quadratic approximations of a DEM raster.  Consider a WxW window of the raster
     with the point (0,0) at center of the pixel in the middle of this window.  A quadratic 
     approximate of the DEM around this pixel can be constructed with the form   
 
     f(x) = ax^2 + by^2 + cxy + dx + ey + f
 
-    Where a,b,c,d,e,f are coefficients.    This function computes these coefficients for all windows
-    in the image. 
+    Where a,b,c,d,e,f are coefficients. This function computes these coefficients for all windows
+    in the raster. 
 
     Arguments
     ---------
@@ -314,7 +314,7 @@ def fit_local_quad(img, dx, dy, window):
     --------
     coeffs: list[np.array]
         A list of 2d arrays containing the coefficients [a,b,c,d,e,f].  Each array is the same shape as the 
-        DEM image.
+        DEM raster.
 
     """
 
