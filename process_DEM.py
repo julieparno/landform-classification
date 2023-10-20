@@ -7,28 +7,13 @@ from scipy import signal
 from scipy import stats
 from datetime import datetime
 import whitebox
+import yaml
 
 import classify_tools as ct
 
-    
-##### User-defined variables #####
-# Note that whitebox does not like relative paths, must use full path
-# direc = '..\\..\\Data\\ArcticDEM\\27_35_10m_v3.0\\'
-# direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\\Data\\TanDEM-X\\Summit-Camp_DSM_20230427\\TanDEM-X_DTED1_90m\\DSM'
-direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\Data\\TanDEM-X\\Freuchen-Nunatakker_DSM_20230213\\TanDEM-X_DTED1_90m\\DSM'
-mask_file = '..\\..\\Data\\Ice_Mask\\NSIDC-0714\\GimpIceMask_90m_2015_v1.2.tif'
-# filename = '27_35_10m_dem_clip.tif'
-# filename = 'U_TanDEM-X-DTED1-90m_dsm_ns_20230427.tif'
-filename = 'U_TanDEM-X-DTED1-90m_dsm_ns_20230213.tif'
-file = os.path.join(direc,filename)
-
-nullval = -32767.0
-dst_epsg = 3413 # currently testing out on NSIDC Sea Ice Polar Stereographic North
-dst_resoln = 90
-###################################
 
 
-def preprocess_dem(dem_file, mask_file, nullval, dst_epsg, dst_resoln, plot=True):
+def preprocess_dem(dem_file, mask_file, nullval, dst_epsg, dst_resoln, mask=True, plot=True):
     """
     This function reads in the raw dem and mask files and reprojects, resamples,
     and clips the rasters, as needed. Lastly, it masks the DEM, setting all
@@ -48,106 +33,131 @@ def preprocess_dem(dem_file, mask_file, nullval, dst_epsg, dst_resoln, plot=True
 
     """
     
-    # load dem as GDAL dataset object and array
-    dem, ds = ct.read_geotiff(file)
+    # dem directory
+    direc = os.path.dirname(dem_file)
     
-    # load mask as GDAL dataset object and array
-    maskarr, dsm = ct.read_geotiff(mask_file)
+    # load dem as GDAL dataset object and array
+    dem, ds = ct.read_geotiff(dem_file)
     
     # get target CRS info
     dst_crs = 'EPSG:' + str(dst_epsg)
     dstcrs = osr.SpatialReference()
     dstcrs.ImportFromEPSG(dst_epsg)
     
-    # check if mask and dem have same CRS
-    crsdem = osr.SpatialReference()
-    crsdem.ImportFromWkt(ds.GetProjection())
-    crsmask = osr.SpatialReference()
-    crsmask.ImportFromWkt(dsm.GetProjection())
-    
-    # reproject DEM or mask, if needed
-    if (crsdem.IsSame(dstcrs) == 0):
-        print('Reprojecting DEM to ' + dst_crs)
-        reproj_ds = os.path.join(direc,'dem_reproject.tif')
-        ds = gdal.Warp(reproj_ds, ds, dstSRS = dst_crs, xRes = dst_resoln, yRes = dst_resoln, dstNodata = nullval, resampleAlg = 'bilinear')
-        dem = ds.GetRasterBand(1).ReadAsArray()
-    if (crsmask.IsSame(dstcrs) == 0):
-        print('Reprojecting mask to ' + dst_crs)
-        reproj_dsm = os.path.join(direc,'mask_reproject.tif')
-        dsm = gdal.Warp(reproj_dsm, dsm, dstSRS = dst_crs, xRes = dst_resoln, yRes = dst_resoln, dstNodata = nullval, resampleAlg = 'mode')
-        maskarr = dsm.GetRasterBand(1).ReadAsArray()
-    
-    # check if mask and dem have same CRS
-    crsdem = osr.SpatialReference()
-    crsdem.ImportFromWkt(ds.GetProjection())
-    crsmask = osr.SpatialReference()
-    crsmask.ImportFromWkt(dsm.GetProjection())
-    if (crsdem.IsSame(crsmask) == 0):
-        print('Mask and DEM CRSs do not match')
+    if mask == True:
+        # load mask as GDAL dataset object and array
+        maskarr, dsm = ct.read_geotiff(mask_file)
         
+        # check if mask and dem have same CRS
+        crsdem = osr.SpatialReference()
+        crsdem.ImportFromWkt(ds.GetProjection())
+        crsmask = osr.SpatialReference()
+        crsmask.ImportFromWkt(dsm.GetProjection())
         
-    _, dem_resoln, _, _, _, _ = ds.GetGeoTransform()
-    _, mask_resoln, _, _, _, _ = dsm.GetGeoTransform()
-    
-    # if mask is significantly larger than DEM, do initial rough clip to reduce resampling time and file size
-    # the final clip will be done after resampling
-    if (maskarr.shape[0] - dem.shape[0] > 50) or (maskarr.shape[1] - dem.shape[1] > 50):
-        dem_extent, dem_bounds = ct.get_raster_extent(ds)
-        print(dem_bounds)
-        inc = [-200, -200, 200, 200]
-        dem_bounds = [sum(i) for i in zip(dem_bounds,inc)]
-        dsm = gdal.Warp(os.path.join(direc,'mask_reduced.tif'), dsm, outputBounds = tuple(dem_bounds))
-        maskarr = dsm.GetRasterBand(1).ReadAsArray()
-    
+        # reproject DEM or mask, if needed
+        if (crsdem.IsSame(dstcrs) == 0):
+            print('Reprojecting DEM to ' + dst_crs)
+            reproj_ds = os.path.join(direc,'dem_reproject.tif')
+            ds = gdal.Warp(reproj_ds, ds, dstSRS = dst_crs, xRes = dst_resoln, yRes = dst_resoln, dstNodata = nullval, resampleAlg = 'bilinear')
+            dem = ds.GetRasterBand(1).ReadAsArray()
+        if (crsmask.IsSame(dstcrs) == 0):
+            print('Reprojecting mask to ' + dst_crs)
+            reproj_dsm = os.path.join(direc,'mask_reproject.tif')
+            dsm = gdal.Warp(reproj_dsm, dsm, dstSRS = dst_crs, xRes = dst_resoln, yRes = dst_resoln, dstNodata = nullval, resampleAlg = 'mode')
+            maskarr = dsm.GetRasterBand(1).ReadAsArray()
         
-    ## check if mask and dem have the same resolution and resample if not
-    if dem_resoln is not dst_resoln:
-        print('Resampling DEM to ' + str(dst_resoln))
-        resamp_ds = os.path.join(direc,'dem_resample.tif')
-        ds = gdal.Warp(resamp_ds, ds, xRes=dst_resoln, yRes=dst_resoln, resampleAlg='bilinear')
-        dem = ds.GetRasterBand(1).ReadAsArray()
-    if mask_resoln is not dst_resoln:
-        print('Resampling mask to ' + str(dst_resoln))
-        resamp_dsm = os.path.join(direc,'mask_resample.tif')
-        dsm = gdal.Warp(resamp_dsm, dsm, xRes=dst_resoln, yRes=dst_resoln, resampleAlg='mode')
-        maskarr = dsm.GetRasterBand(1).ReadAsArray()
-    
-    # clip mask
-    if (dem.shape[0] < maskarr.shape[0]) and (dem.shape[1] < maskarr.shape[1]):
-        dem_extent, dem_bounds = ct.get_raster_extent(ds)
-        mask_crop = gdal.Warp(os.path.join(direc,'mask_clip.tif'), dsm, outputBounds = tuple(dem_bounds))
-        maskarr = mask_crop.GetRasterBand(1).ReadAsArray()
-    elif (dem.shape[0] > maskarr.shape[0]) or (dem.shape[1] > maskarr.shape[1]):
-        print(dem.shape[0],dem.shape[1])
-        print(maskarr.shape[0],maskarr.shape[1])
-        raise RuntimeError('The mask will not fully cover the DEM')
+        # check if mask and dem have same CRS
+        crsdem = osr.SpatialReference()
+        crsdem.ImportFromWkt(ds.GetProjection())
+        crsmask = osr.SpatialReference()
+        crsmask.ImportFromWkt(dsm.GetProjection())
+        if (crsdem.IsSame(crsmask) == 0):
+            print('Mask and DEM CRSs do not match')
+            
+            
+        _, dem_resoln, _, _, _, _ = ds.GetGeoTransform()
+        _, mask_resoln, _, _, _, _ = dsm.GetGeoTransform()
         
-    if (dem.shape != maskarr.shape):
-        print('dem is '+ str(dem.shape) +' and mask is '+ str(maskarr.shape))
-        raise RuntimeError('Mask cannot be applied because DEM and mask are not the same shape')
+        # if mask is significantly larger than DEM, do initial rough clip to reduce resampling time and file size
+        # the final clip will be done after resampling
+        if (maskarr.shape[0] - dem.shape[0] > 50) or (maskarr.shape[1] - dem.shape[1] > 50):
+            dem_extent, dem_bounds = ct.get_raster_extent(ds)
+            print(dem_bounds)
+            inc = [dem_resoln*-3, dem_resoln*-3, dem_resoln*3, dem_resoln*3]
+            dem_bounds = [sum(i) for i in zip(dem_bounds,inc)]
+            dsm = gdal.Warp(os.path.join(direc,'mask_reduced.tif'), dsm, outputBounds = tuple(dem_bounds))
+            maskarr = dsm.GetRasterBand(1).ReadAsArray()
+        
+            
+        ## check if mask and dem have the same resolution and resample if not
+        if dem_resoln is not dst_resoln:
+            print('Resampling DEM to ' + str(dst_resoln))
+            resamp_ds = os.path.join(direc,'dem_resample.tif')
+            ds = gdal.Warp(resamp_ds, ds, xRes=dst_resoln, yRes=dst_resoln, resampleAlg='bilinear')
+            dem = ds.GetRasterBand(1).ReadAsArray()
+        if mask_resoln is not dst_resoln:
+            print('Resampling mask to ' + str(dst_resoln))
+            resamp_dsm = os.path.join(direc,'mask_resample.tif')
+            dsm = gdal.Warp(resamp_dsm, dsm, xRes=dst_resoln, yRes=dst_resoln, resampleAlg='mode')
+            maskarr = dsm.GetRasterBand(1).ReadAsArray()
+        
+        # clip mask
+        if (dem.shape[0] < maskarr.shape[0]) and (dem.shape[1] < maskarr.shape[1]):
+            dem_extent, dem_bounds = ct.get_raster_extent(ds)
+            mask_crop = gdal.Warp(os.path.join(direc,'mask_clip.tif'), dsm, outputBounds = tuple(dem_bounds))
+            maskarr = mask_crop.GetRasterBand(1).ReadAsArray()
+        elif (dem.shape[0] > maskarr.shape[0]) or (dem.shape[1] > maskarr.shape[1]):
+            print(dem.shape[0],dem.shape[1])
+            print(maskarr.shape[0],maskarr.shape[1])
+            raise RuntimeError('The mask will not fully cover the DEM')
+            
+        if (dem.shape != maskarr.shape):
+            print('dem is '+ str(dem.shape) +' and mask is '+ str(maskarr.shape))
+            raise RuntimeError('Mask cannot be applied because DEM and mask are not the same shape')
+        
+        # apply mask
+        masked_dem = dem*maskarr
+        masked_dem[masked_dem==0]=nullval
     
-    # apply mask
-    masked_dem = dem*maskarr
-    masked_dem[masked_dem==0]=nullval
-    
-    # export masked dem
-    out_file = os.path.join(direc,'masked_dem.tif')
-    ct.write_geotiff(out_file, masked_dem, ds, nullval)
+        # export masked dem
+        out_file = os.path.join(direc,'masked_dem'+str(dst_resoln)+'m.tif')
+        ct.write_geotiff(out_file, masked_dem, ds, nullval)
+        
+    else:
+        # check current DEM projection
+        crsdem = osr.SpatialReference()
+        crsdem.ImportFromWkt(ds.GetProjection())
+        
+        # reproject DEM, if needed
+        if (crsdem.IsSame(dstcrs) == 0):
+            print('Reprojecting DEM to ' + dst_crs)
+            out_file = os.path.join(direc,'dem_reproject_'+str(dst_resoln)+'m.tif')
+            ds = gdal.Warp(out_file, ds, dstSRS = dst_crs, xRes = dst_resoln, yRes = dst_resoln, dstNodata = nullval, resampleAlg = 'bilinear')
+            dem = ds.GetRasterBand(1).ReadAsArray()
+               
     
     if plot is True:
-        # plot up DEM
-        plt.figure()
-        mskdem = ma.masked_where(masked_dem==nullval, masked_dem)
-        plt.imshow(mskdem)
-        plt.colorbar(label='Elevation (m)')
-        plt.clim(vmin=0,vmax=2000)
-        plt.show()
+        if mask == True:
+            # plot up DEM
+            plt.figure()
+            mskdem = ma.masked_where(masked_dem==nullval, masked_dem)
+            plt.imshow(mskdem)
+            plt.colorbar(label='Elevation (m)')
+            plt.clim(vmin=0,vmax=2000)
+            plt.show()
+        else:
+            # plot up DEM
+            plt.figure()
+            dem = ma.masked_where(dem==nullval, dem)
+            plt.imshow(dem)
+            plt.colorbar(label='Elevation (m)')
+            plt.clim(vmin=0,vmax=2000)
+            plt.show()
     
     # close out GDAL dataset objects
     ds = dsm = None
     
     return out_file
-
 
 
 def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7, coarsen=10, plot=True):
@@ -183,6 +193,10 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
 
     """
     
+    # dem directory
+    direc = os.path.dirname(dem_file)
+    
+    
     # Mean aggregate scaling with Wood 1996 classification
     if scaletype == 'agg':
     
@@ -214,12 +228,13 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         
         if plot is True:
             ct.plot_landforms(featrs, nullval)
+            plt.title('Resolution = '+str(dst_resoln)+'m, Window Size(s) = '+str(wsize))
         
         # export landform rasters
-        ct.write_geotiff(os.path.join(direc,'landforms_'+str(coarsen)+'_agg.tif'),featrs,ds,nullval)
+        ct.write_geotiff(os.path.join(direc,'landforms_'+str(dst_resoln)+'m_'+str(coarsen)+'_agg.tif'),featrs,ds,nullval)
     
     
-    # Gaussian Space Scale in Whitebox test - NEEDS WORK
+    # Gaussian Space Scale in Whitebox test - Needs additional testing
     if scaletype == 'gauss':
         
         outfile = os.path.join(direc,'gauss_results','gauss_test.tif')
@@ -235,8 +250,8 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
             sigma=0, step=10, num_steps=5, lsp="Slope", z_factor=None)
     
     
-    # Local Quadratic Regression without Whitebox
-    if scaletype == 'quad' and multiscale is False:    
+    # Local Quadratic Regression
+    if scaletype == 'quad' and multiscale is False:
         
         if not isinstance(wsize,int):
             raise RuntimeError('Multiple window sizes provided, select one for single scale analysis or \
@@ -283,7 +298,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         
         
         # export landform rasters
-        ct.write_geotiff(os.path.join(direc,'landforms_'+str(wsize)+'_quad.tif'),featrs,ds, nullval)
+        ct.write_geotiff(os.path.join(direc,'landforms_'+str(dst_resoln)+'m_'+str(wsize)+'_quad.tif'),featrs,ds, nullval)
         
         end = datetime.now()
         td = (end - start).total_seconds()
@@ -293,6 +308,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         if plot is True:
             print('Plotting up results')
             ct.plot_landforms(featrs, nullval)
+            plt.title('Resolution = '+str(dst_resoln)+'m, Window Size(s) = '+str(wsize))
         
             # plot up DEM
             plt.figure()
@@ -375,14 +391,17 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         print('Writing out files...')
         
         # export mode and entropy to tif files
-        ct.write_geotiff(os.path.join(direc,'landforms_multiscale_mode.tif'),landform_all,ds, nullval)
-        ct.write_geotiff(os.path.join(direc,'landforms_multiscale_entropy.tif'),neg_entropy,ds, nullval)
+        mode_outfile = 'landforms_'+str(dst_resoln)+'m_'+str(wsize)+'_mode.tif'
+        entropy_outfile = 'landforms_'+str(dst_resoln)+'m_'+str(wsize)+'_entropy.tif'
+        ct.write_geotiff(os.path.join(direc,mode_outfile),landform_all,ds, nullval)
+        ct.write_geotiff(os.path.join(direc,entropy_outfile),neg_entropy,ds, nullval)
         
         print('Done')
         
         # plot up results
         if plot is True:
             ct.plot_landforms(landform_all, nullval)
+            plt.title('Resolution = '+str(dst_resoln)+'m, Window Size(s) = '+str(wsize))
             
             plt.figure()
             plt.imshow(neg_entropy)
@@ -392,37 +411,38 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
     
 
 if __name__=='__main__':
-
-    ## Note that whitebox does not like relative paths, must use full path
-    ## Path to DEM directory
-    # direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\Data\\TanDEM-X\\Freuchen-Nunatakker_DSM_20230213\\TanDEM-X_DTED1_90m\\DSM'
-    # direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\Data\\ArcticDEM\\27_35_10m_v3.0\\'
-    # direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\\Data\\TanDEM-X\\Summit-Camp_DSM_20230427\\TanDEM-X_DTED1_90m\\DSM'
-    # direc = 'C:\\Users\\RDCRLJTP\\Documents\\Projects\\ECW\\Data\\TanDEM-X\\Grand_Canyon_DSM_20230522\\TanDEM-X_DTED2_30m\\DSM'
-    direc = r'C:\Users\RDCRLJTP\Documents\Projects\ECW\Data\TanDEM-X\Vatnajokull_DSM_20230831\TanDEM-X_Arctic\DSM'
     
-    ## DEM filename
-    # filename = 'U_TanDEM-X-DTED1-90m_dsm_ns_20230213.tif'
-    # filename = '27_35_10m_dem_clip.tif'
-    # filename = 'U_TanDEM-X-DTED1-90m_dsm_ns_20230427.tif'
-    # filename = 'ULIMDIS_TanDEM-X-DTED2-30m_dsm_ns_20230522.tif'
-    filename = 'ULIMDIS_TanDEM-X-Arctic_dsm_ns_20230831.tif'
+    with open('..\\config.yml', 'r') as file:
+        config = yaml.safe_load(file)
     
-    ## mask filename
-    # mask_file = '..\\..\\Data\\Ice_Mask\\NSIDC-0714\\GimpIceMask_90m_2015_v1.2.tif'
-    # mask_file = '..\\..\\Data\\Ice_Mask\\ATL03_ANC_MASKS\\ATL03_ANC_MASKS_landicemask_v01.tif'
-    mask_file = '..\\..\\Data\\Ice_Mask\\NSIDC-0780\\ice_mask.tif'
-    file = os.path.join(direc,filename)
-
-    nullval = -32767.0    # NoData value
-    dst_epsg = 3413       # target CRS (generally EPSG:3413 for Arctic, EPSG:3976 for Antarctic)
-    dst_resoln = 100       # target resolution
+    preprocess = config.get('Run Preprocessor',True)
+        
+    raw_file = config['Files']['DEM']
+    mask_file = config['Files']['Mask']
     
-
-    maskedDEM_file = preprocess_dem(file, mask_file, nullval, dst_epsg, dst_resoln, plot=True)
+    nullval = config.get('NoData Value', -32767.0)
+    dst_epsg = config['Target EPSG']
+    dst_resoln = config['Target Resolution']
+    maskopt = config.get('Use Mask', False)
+    plot1 = config.get('Generate Initial DEM Plot', True)
     
-    # if skipping masking step, change maskedDEM_file to file in classify_dem args below
-    maskedDEM_file = os.path.join(direc,'masked_dem.tif')
+    scaletype = config.get('Scaling Type','quad')
+    multiscale = config.get('Multiscale Analysis', False)
+    if multiscale == False:
+        wsize = config['Window Size']
+    else:
+        wsize = range(config['Window Size'][0],config['Window Size'][1],config['Window Size'][2])
+    coarsen = config.get('Coarsen', None)
+    plot2 = config.get('Generate Classified DEM Plot', True)
     
-    classify_dem(maskedDEM_file, nullval, scaletype='quad', multiscale=False, wsize=35, coarsen=None, plot=True)
+    if preprocess == True:
+        DEM_file = preprocess_dem(raw_file, mask_file, nullval, dst_epsg, dst_resoln, mask=maskopt, plot=plot1)
+        classify_dem(DEM_file, nullval, scaletype=scaletype, multiscale=multiscale, wsize=wsize, coarsen=coarsen, plot=plot2)
     
+    else:
+        if maskopt == True:
+            DEM_file = os.path.join(os.path.dirname(raw_file),'masked_dem'+str(dst_resoln)+'m.tif')
+        else:
+            DEM_file = os.path.join(os.path.dirname(raw_file),'dem_reproject_'+str(dst_resoln)+'m.tif')
+            
+        classify_dem(DEM_file, nullval, scaletype=scaletype, multiscale=multiscale, wsize=wsize, coarsen=coarsen, plot=plot2)
