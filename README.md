@@ -16,9 +16,9 @@ conda env create -f DEM_class.yml
 # WhiteBox requires full path for DEM
 Files:
   DEM: "C:\\Users\\JohnSmith\\Documents\\Projects\\LandClass\\raw_dem.tif"    # full path to raw DEM file
-  Mask: "..\\..\\Data\\Ice_Mask\\NSIDC-0714\\GimpIceMask_90m_2015_v1.2.tif"   # relative path to ice mask
+  Mask: "..\\..\\Data\\Ice_Mask\\NSIDC-0714\\GimpIceMask_90m_2015_v1.2.tif"   # path to ice mask
 
-Run Preprocessor: False
+Run Preprocessor: True
 
 NoData Value: -32767.0    # NoData value
 Target EPSG: 3413         # generally EPSG:3413 for Arctic, EPSG:3976 for Antarctic
