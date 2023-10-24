@@ -234,7 +234,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         ct.write_geotiff(os.path.join(direc,'landforms_'+str(dst_resoln)+'m_'+str(coarsen)+'_agg.tif'),featrs,ds,nullval)
     
     
-    # Gaussian Space Scale in Whitebox test - Needs additional testing
+    # Gaussian Space Scale in Whitebox - Needs work, function does not output maximum or minimum curvature
     if scaletype == 'gauss':
         
         outfile = os.path.join(direc,'gauss_results','gauss_test.tif')
@@ -405,6 +405,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
             
             plt.figure()
             plt.imshow(neg_entropy)
+            plt.colorbar()
             plt.show()
         
     ds = None
