@@ -298,7 +298,20 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         
         
         # export landform rasters
-        ct.write_geotiff(os.path.join(direc,'landforms_'+str(dst_resoln)+'m_'+str(wsize)+'_quad.tif'),featrs,ds, nullval)
+        outfile = os.path.join(direc,'landforms_'+str(dst_resoln)+'m_'+str(wsize)+'_quad.tif')
+        ct.write_geotiff(os.path.join(direc,'temp.tif'),featrs,ds,nullval)
+        ds = None
+        
+        # clip edges of raster, moving window outside of raster results in unreliable classifications
+        featrs, ds = ct.read_geotiff(os.path.join(direc,'temp.tif'))
+        _,bounds = ct.get_raster_extent(ds)
+        inc = [dst_resoln*int(wsize/2), dst_resoln*int(wsize/2), dst_resoln*-int(wsize/2), dst_resoln*-int(wsize/2)]
+        dem_bounds = [sum(i) for i in zip(bounds,inc)]
+        ds = gdal.Warp(outfile, ds, outputBounds = tuple(dem_bounds), dstNodata = nullval)
+        
+        # remove temp file
+        ds = None
+        os.remove(os.path.join(direc,'temp.tif'))
         
         end = datetime.now()
         td = (end - start).total_seconds()
@@ -307,6 +320,8 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         # plot results
         if plot is True:
             print('Plotting up results')
+            # read back in for plotting
+            featrs,_ = ct.read_geotiff(outfile)
             ct.plot_landforms(featrs, nullval)
             plt.title('Resolution = '+str(dst_resoln)+'m, Window Size(s) = '+str(wsize))
         
@@ -380,6 +395,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
         # featrs = ma.masked_where(new_mask == 1.,featrs)
         landform_all[np.where(new_mask==1.)]=nullval
         
+        
         # entropy
         probs = np.stack([np.sum(lf==c,axis=2) for c in range(6)],2).astype('float')
         probs /= np.tile(np.sum(probs,axis=2).reshape(probs.shape[0],probs.shape[1],1)+1e-8, (1,1,6))
@@ -413,7 +429,7 @@ def classify_dem(dem_file, nullval, scaletype='quad', multiscale=False, wsize=7,
 
 if __name__=='__main__':
     
-    with open('..\\config.yml', 'r') as file:
+    with open('config.yml', 'r') as file:
         config = yaml.safe_load(file)
     
     preprocess = config.get('Run Preprocessor',True)
